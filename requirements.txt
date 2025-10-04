@@ -1,0 +1,15 @@
+# Core GUI and Media
+PyQt6
+librosa
+ffmpeg-python
+numpy
+soundfile
+
+# AI & Computer Vision
+torch
+torchvision
+transformers
+scenedetect[opencv]
+Pillow
+ftfy
+regex
