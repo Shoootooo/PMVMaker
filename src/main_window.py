@@ -61,12 +61,19 @@ class GenerationWorker(QThread):
                 return
 
             # --- 2. Music Analysis ---
-            self.progress_text.emit("Analyzing music track...")
+            self.progress_text.emit("Normalizing audio track...")
             self.progress_value.emit(20)
-            beat_times = music_analyzer.get_beat_timestamps(self.music_file, tightness=self.beat_tightness)
-            music_duration = music_analyzer.get_audio_duration(self.music_file)
+            normalized_audio_path = music_analyzer.normalize_audio(self.music_file)
+            if not normalized_audio_path:
+                self.finished.emit("Error: Could not normalize audio file. It may be corrupted or an unsupported format.")
+                return
+
+            self.progress_text.emit("Analyzing music track...")
+            self.progress_value.emit(25)
+            beat_times = music_analyzer.get_beat_timestamps(normalized_audio_path, tightness=self.beat_tightness)
+            music_duration = music_analyzer.get_audio_duration(normalized_audio_path)
             if not beat_times.any() or music_duration <= 0:
-                self.finished.emit("Error: Could not analyze music file.")
+                self.finished.emit("Error: Could not analyze the normalized music file.")
                 return
 
             # --- 3. AI Classification ---
@@ -97,7 +104,7 @@ class GenerationWorker(QThread):
                 if p >= 0:
                     self.progress_value.emit(int(70 + p * 30))
 
-            renderer.render_pmv(edit_list, self.music_file, self.output_file, music_duration, on_progress=renderer_progress)
+            renderer.render_pmv(edit_list, normalized_audio_path, self.output_file, music_duration, on_progress=renderer_progress)
 
             self.progress_value.emit(100)
             self.finished.emit(f"Success! PMV saved to: {self.output_file}")
