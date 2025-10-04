@@ -5,7 +5,7 @@ import glob
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QProgressBar, QLineEdit,
-    QMessageBox, QTextEdit, QScrollArea
+    QMessageBox, QTextEdit, QComboBox
 )
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 
@@ -22,25 +22,31 @@ class GenerationWorker(QThread):
     progress_value = pyqtSignal(int)
     finished = pyqtSignal(str)
 
-    def __init__(self, video_folder, music_file, output_file, prompts, progression):
+    def __init__(self, video_folder, music_file, output_file, prompts, progression, beat_tightness):
         super().__init__()
         self.video_folder = video_folder
         self.music_file = music_file
         self.output_file = output_file
         self.prompts = prompts
         self.progression = progression
+        self.beat_tightness = beat_tightness
         self.is_running = True
 
     def run(self):
         try:
             # --- 1. Scene Detection ---
-            self.progress_text.emit("Detecting scenes from source videos...")
+            self.progress_text.emit("Scanning for source videos...")
             self.progress_value.emit(5)
-            source_videos = glob.glob(os.path.join(self.video_folder, '*.mp4')) + \
-                            glob.glob(os.path.join(self.video_folder, '*.mov'))
+
+            extensions = ['*.mp4', '*.mov', '*.avi', '*.mkv', '*.webm']
+            source_videos = []
+            for ext in extensions:
+                # Use recursive glob to find videos in subdirectories
+                search_path = os.path.join(self.video_folder, '**', ext)
+                source_videos.extend(glob.glob(search_path, recursive=True))
 
             if not source_videos:
-                self.finished.emit("Error: No .mp4 or .mov files found in the source folder.")
+                self.finished.emit("Error: No compatible video files (.mp4, .mov, .avi, .mkv, .webm) found in the source folder or its subdirectories.")
                 return
 
             all_scene_clips = []
@@ -57,7 +63,7 @@ class GenerationWorker(QThread):
             # --- 2. Music Analysis ---
             self.progress_text.emit("Analyzing music track...")
             self.progress_value.emit(20)
-            beat_times = music_analyzer.get_beat_timestamps(self.music_file)
+            beat_times = music_analyzer.get_beat_timestamps(self.music_file, tightness=self.beat_tightness)
             music_duration = music_analyzer.get_audio_duration(self.music_file)
             if not beat_times.any() or music_duration <= 0:
                 self.finished.emit("Error: Could not analyze music file.")
@@ -108,8 +114,8 @@ class GenerationWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI PMV Generator v2.0")
-        self.setGeometry(100, 100, 700, 650)
+        self.setWindowTitle("AI PMV Generator v2.1")
+        self.setGeometry(100, 100, 700, 700)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -133,10 +139,25 @@ class MainWindow(QMainWindow):
         self.prompts_input.setFixedHeight(150)
         self.layout.addWidget(self.prompts_input)
 
-        # --- Progression Logic ---
-        self.layout.addWidget(QLabel("5. Define Clip Progression (comma-separated category names from above):"))
+        # --- Options ---
+        options_layout = QHBoxLayout()
+        # Progression Logic
+        prog_layout = QVBoxLayout()
+        prog_layout.addWidget(QLabel("5. Clip Progression:"))
         self.progression_input = QLineEdit("kissing,oral,penetration,cumshots")
-        self.layout.addWidget(self.progression_input)
+        prog_layout.addWidget(self.progression_input)
+        options_layout.addLayout(prog_layout)
+
+        # Beat Detection Pace
+        pace_layout = QVBoxLayout()
+        pace_layout.addWidget(QLabel("6. Editing Pace:"))
+        self.pace_dropdown = QComboBox()
+        self.pace_dropdown.addItems(["Relaxed", "Normal", "Intense"])
+        self.pace_dropdown.setCurrentText("Normal")
+        pace_layout.addWidget(self.pace_dropdown)
+        options_layout.addLayout(pace_layout)
+
+        self.layout.addLayout(options_layout)
 
         self.layout.addStretch()
 
@@ -205,6 +226,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid Progression", "The progression must contain valid category names from the prompts JSON.")
             return
 
+        # --- Get Beat Tightness ---
+        pace_map = {
+            "Relaxed": 200,
+            "Normal": 100,
+            "Intense": 50
+        }
+        beat_tightness = pace_map.get(self.pace_dropdown.currentText(), 100)
+
         # --- Start Worker ---
         self.generate_button.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -214,7 +243,8 @@ class MainWindow(QMainWindow):
             self.music_file_path.text(),
             self.output_file_path.text(),
             prompts,
-            progression
+            progression,
+            beat_tightness
         )
         self.worker.progress_text.connect(self.status_label.setText)
         self.worker.progress_value.connect(self.progress_bar.setValue)

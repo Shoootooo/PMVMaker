@@ -1,7 +1,7 @@
 import ffmpeg
 import os
 
-def render_pmv(edit_list, music_path, output_path, music_duration, resolution=(1280, 720), on_progress=None):
+def render_pmv(edit_list, music_path, output_path, music_duration, resolution=(1920, 1080), on_progress=None):
     """
     Renders the final PMV by stitching clips together and syncing to the music duration.
 
@@ -42,8 +42,8 @@ def render_pmv(edit_list, music_path, output_path, music_duration, resolution=(1
                     vf=f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:-1:-1:black,fps=30,format=yuv420p',
                     vcodec='libx264',
                     acodec='aac', # Include dummy audio to keep ffmpeg happy
-                    preset='medium',
-                    crf=23
+                    preset='slow',
+                    crf=18
                 )
                 .run(overwrite_output=True, quiet=True)
             )
