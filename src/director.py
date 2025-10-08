@@ -100,6 +100,33 @@ def create_edit_list(categorized_clips, beat_times, music_duration, progression)
             while beat_idx < len(stage_beats) and stage_beats[beat_idx] < current_time:
                 beat_idx += 1
 
+    # --- Gap Filling Step ---
+    total_video_duration = sum(d for _, _, d in edit_list)
+    gap = music_duration - total_video_duration
+
+    # If there's a noticeable gap, add one last clip to fill it.
+    if gap > 0.1 and valid_categories:
+        print(f"Timeline is short by {gap:.2f}s. Adding a final clip to fill the gap.")
+
+        # Get a clip from the last valid category.
+        last_category_manager = clip_managers[valid_categories[-1]]
+        final_clip_path = last_category_manager.get_clip()
+
+        # If we couldn't get a clip, try to get one from the main pool.
+        if not final_clip_path and last_category_manager.all_clips:
+            final_clip_path = last_category_manager.all_clips[0]
+
+        if final_clip_path:
+            clip_len = get_video_duration(final_clip_path)
+            # We can only cut a duration up to the clip's length.
+            duration_to_cut = min(gap, clip_len)
+
+            # Pick a random start point.
+            max_start_in_clip = max(0, clip_len - duration_to_cut)
+            start_in_clip = random.uniform(0, max_start_in_clip)
+
+            edit_list.append((final_clip_path, start_in_clip, duration_to_cut))
+
     return edit_list
 
 
@@ -144,20 +171,20 @@ if __name__ == '__main__':
     print(f"Total duration of cuts: {total_duration:.2f}s")
     print(f"Target music duration: {music_len:.2f}s")
 
-    # Test 1: Time redistribution
-    # The duration should still be correct even with an empty category.
-    assert abs(total_duration - music_len) < 1.0, "Total duration should match music length after redistributing time."
-    print("✅ Test 1 Passed: Time redistribution for empty categories is working.")
-
-    # Test 2: Clip variety
+    # Test 1: Clip variety
     # The first stage ('intro') has 2 clips. The first 2 cuts should use different clips.
     intro_stage_duration = music_len / 2 # Since 'outro' is empty, time is split between 'intro' and 'main'
     intro_cuts = [path for path, _, dur in edit_list if sum(d for _,_,d in edit_list[:edit_list.index((path,_,dur))]) < intro_stage_duration]
     if len(intro_cuts) >= 2:
         assert intro_cuts[0] != intro_cuts[1], "First two clips in a stage should not be the same."
-        print("✅ Test 2 Passed: ClipManager prevents immediate clip repetition.")
+        print("✅ Test 1 Passed: ClipManager prevents immediate clip repetition.")
     else:
-        print("ℹ️ Test 2 Skipped: Not enough cuts generated in the intro stage to verify non-repetition.")
+        print("ℹ️ Test 1 Skipped: Not enough cuts generated in the intro stage to verify non-repetition.")
+
+    # Test 2: Exact duration matching (Gap-filling)
+    # The duration should be almost exactly the music length due to the gap-filling logic.
+    assert abs(total_duration - music_len) < 0.01, "Total duration should exactly match music length due to gap-filling."
+    print("✅ Test 2 Passed: Gap-filling logic ensures precise video duration.")
 
     # Restore original function
     get_video_duration = original_get_duration
